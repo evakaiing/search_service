@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"searchservice/pkg"
-	"searchservice/internal/storage"
 	"searchservice/internal/handlers"
 	"searchservice/internal/models"
+	"searchservice/internal/storage"
+	client "searchservice/pkg"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +24,10 @@ type TestCase struct {
 }
 
 func TestFindUsers(t *testing.T) {
+	oldPath := storage.DatasetPath
+	storage.DatasetPath = "../dataset.xml"
+	defer func() { storage.DatasetPath = oldPath }()
+
 	server := httptest.NewServer(http.HandlerFunc(handlers.SearchHandler))
 	defer server.Close()
 
@@ -66,7 +70,7 @@ func TestFindUsers(t *testing.T) {
 			Req:        client.SearchRequest{Limit: 30, Offset: 0, OrderField: "Name", OrderBy: models.OrderByAsc},
 			StatusCode: http.StatusOK,
 			ErrStr:     nil,
-			Expected:   ``, 
+			Expected:   ``,
 		},
 		// NextPage = true
 		{
@@ -87,9 +91,9 @@ func TestFindUsers(t *testing.T) {
 				marshalJson, err := json.Marshal(resp.Users)
 				if err != nil {
 					t.Errorf("[%d] unexpected error: %v", caseNum, err)
-				} else if string(marshalJson) != item.Expected{
+				} else if string(marshalJson) != item.Expected {
 					t.Errorf("[%d] wrong Response:\ngot %v\nexpected %v", caseNum, string(marshalJson), item.Expected)
-	
+
 				}
 			}
 			continue
@@ -107,15 +111,15 @@ func TestFindUsers2(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			_, err := w.Write([]byte("invalid json{"))
-			if (err != nil) {
-				t.Errorf("[BadRequestUnpackJson] unexpected error: %v", err)	
+			if err != nil {
+				t.Errorf("[BadRequestUnpackJson] unexpected error: %v", err)
 				return
 			}
 		}))
 		defer server.Close()
 
-		client := client.SearchClient{"token1", server.URL}
-		_, err := client.FindUsers(client.SearchRequest{Limit: 10, Offset: 0})
+		searchClient := client.SearchClient{"token1", server.URL}
+		_, err := searchClient.FindUsers(client.SearchRequest{Limit: 10, Offset: 0})
 
 		if err == nil || !strings.Contains(err.Error(), "cant unpack error json") {
 			t.Errorf("expected unpack error, got: %v", err)
@@ -129,15 +133,15 @@ func TestFindUsers2(t *testing.T) {
 			resp := models.SearchErrorResponse{Error: "some unknown error"}
 			jsonData, err := json.Marshal(resp)
 			if err != nil {
-				t.Errorf("[BadRequestUnknownError] unexpected error: %v", err)	
+				t.Errorf("[BadRequestUnknownError] unexpected error: %v", err)
 				return
 			}
 			w.Write(jsonData)
 		}))
 		defer server.Close()
 
-		client := client.SearchClient{"token1", server.URL}
-		_, err := client.FindUsers(client.SearchRequest{Limit: 10, Offset: 0})
+		searchClient := client.SearchClient{"token1", server.URL}
+		_, err := searchClient.FindUsers(client.SearchRequest{Limit: 10, Offset: 0})
 
 		if err == nil || !strings.Contains(err.Error(), "unknown bad request error") {
 			t.Errorf("expected unknown bad request error, got: %v", err)
@@ -150,8 +154,8 @@ func TestFindUsers2(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := client.SearchClient{"token1", server.URL}
-		_, err := client.FindUsers(client.SearchRequest{Limit: 10, Offset: 0})
+		searchClient := client.SearchClient{"token1", server.URL}
+		_, err := searchClient.FindUsers(client.SearchRequest{Limit: 10, Offset: 0})
 
 		if err == nil || err.Error() != "SearchServer fatal error" {
 			t.Errorf("expected SearchServer fatal error, got: %v", err)
@@ -162,15 +166,15 @@ func TestFindUsers2(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			_, err := w.Write([]byte("invalid json{"))
-			if (err != nil) {
-				t.Errorf("[OkWithErrorUnpackJson] unexpected error: %v", err)	
+			if err != nil {
+				t.Errorf("[OkWithErrorUnpackJson] unexpected error: %v", err)
 				return
 			}
 		}))
 		defer server.Close()
 
-		client := client.SearchClient{"token1", server.URL}
-		_, err := client.FindUsers(client.SearchRequest{Limit: 10, Offset: 0})
+		searchClient := client.SearchClient{"token1", server.URL}
+		_, err := searchClient.FindUsers(client.SearchRequest{Limit: 10, Offset: 0})
 
 		if err == nil || !strings.Contains(err.Error(), "cant unpack result json") {
 			t.Errorf("expected unpack result error, got: %v", err)
@@ -183,8 +187,8 @@ func TestFindUsers2(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := client.SearchClient{"token1", server.URL}
-		_, err := client.FindUsers(client.SearchRequest{Limit: 10, Offset: 0})
+		searchClient := client.SearchClient{"token1", server.URL}
+		_, err := searchClient.FindUsers(client.SearchRequest{Limit: 10, Offset: 0})
 
 		if err == nil || !strings.Contains(err.Error(), "timeout") {
 			t.Errorf("expected timeout error, got: %v", err)
@@ -198,8 +202,8 @@ func TestFindUsers2(t *testing.T) {
 		url := ts.URL
 		ts.Close()
 
-		client := client.SearchClient{"token1", url}
-		_, err := client.FindUsers(client.SearchRequest{Limit: 10, Offset: 0})
+		searchClient := client.SearchClient{"token1", url}
+		_, err := searchClient.FindUsers(client.SearchRequest{Limit: 10, Offset: 0})
 
 		if err == nil || !strings.Contains(err.Error(), "unknown error") {
 			t.Errorf("expected unknown error, got: %v", err)
@@ -208,15 +212,19 @@ func TestFindUsers2(t *testing.T) {
 }
 
 func TestSearchSever(t *testing.T) {
+	oldPath := storage.DatasetPath
+	storage.DatasetPath = "../dataset.xml"
+	defer func() { storage.DatasetPath = oldPath }()
+
 	server := httptest.NewServer(http.HandlerFunc(handlers.SearchHandler))
 	defer server.Close()
 	cases := []TestCase{
 		// OrderField=Age different OrderBy
 		{
-			Srv:        client.SearchClient{
-							AccessToken: "token1", 
-							URL: server.URL,
-						},
+			Srv: client.SearchClient{
+				AccessToken: "token1",
+				URL:         server.URL,
+			},
 			Req:        client.SearchRequest{Limit: 2, Offset: 30, OrderField: "Age", OrderBy: models.OrderByAsc},
 			StatusCode: http.StatusOK,
 			ErrStr:     nil,
@@ -327,12 +335,11 @@ func TestSearchServer2(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(handlers.SearchHandler))
 		defer ts.Close()
 
-		client := client.SearchClient{"token1", ts.URL}
-		_, err := client.FindUsers(client.SearchRequest{Limit: 10, Offset: 0})
+		searchClient := client.SearchClient{"token1", ts.URL}
+		_, err := searchClient.FindUsers(client.SearchRequest{Limit: 10, Offset: 0})
 
 		if err == nil || err.Error() != "SearchServer fatal error" {
 			t.Errorf("expected SearchServer fatal error, got: %v", err)
 		}
 	})
 }
-
